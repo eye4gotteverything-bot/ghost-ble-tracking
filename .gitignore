@@ -1,0 +1,20 @@
+# OS junk
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor junk
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Node (this project has no build step, but just in case)
+node_modules/
+npm-debug.log*
+
+# Environment / secrets — never commit these
+.env
+.env.*
+!.env.example

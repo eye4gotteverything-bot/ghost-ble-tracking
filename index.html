@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ghost BLE Tracking</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="app-header">
+  <div class="logo">👻</div>
+  <div>
+    <h1>Ghost BLE Tracking</h1>
+    <p class="tagline">Nearby Bluetooth &amp; Wi-Fi devices, by proximity in feet</p>
+  </div>
+  <span id="headerStatus" class="status-dot" title="Scan status">● Idle</span>
+</header>
+
+<div id="demoBanner" class="demo-banner hidden">
+  DEMO MODE is ON — every device, network and flag below is fictional sample data, labeled “Demo”. This web version cannot scan real surrounding devices.
+</div>
+<div id="noDemoNotice" class="notice">
+  Demo Mode is OFF and no scan data exists yet. This web version cannot power your phone's Bluetooth or Wi-Fi radios — turn on <strong>Demo Mode</strong> in Settings (or the button below) to see how scanning, tracking and targeting flags work with fictional sample data. Real scanning needs the native Android build (see Settings → Live scan).
+  <div><button id="demoQuickToggle" type="button">Turn Demo Mode on</button></div>
+</div>
+
+<nav class="tabs" role="tablist">
+  <button class="tab-btn active" data-tab="scanner" type="button">Scanner</button>
+  <button class="tab-btn" data-tab="targeting" type="button">Targeting</button>
+  <button class="tab-btn" data-tab="tracking" type="button">Tracking <span id="trackedBadge" class="badge hidden">0</span></button>
+  <button class="tab-btn" data-tab="history" type="button">History <span id="historyBadge" class="badge hidden">0</span></button>
+  <button class="tab-btn" data-tab="settings" type="button">Settings</button>
+</nav>
+
+<main>
+  <!-- ============ SCANNER ============ -->
+  <section id="tab-scanner" class="tab-panel active">
+    <div class="card status-bar">
+      <div class="status-row">
+        <span>State: <strong id="scanState">Idle</strong></span>
+        <span>Elapsed: <strong id="scanElapsed">0:00</strong></span>
+        <span>Sweeping: <strong id="sweepInfo">—</strong></span>
+      </div>
+      <div class="status-row counters">
+        <span>Devices: <strong id="countTotal">0</strong></span>
+        <span class="band-ble">2.4 GHz: <strong id="countBle">0</strong></span>
+        <span class="band-w5">5 GHz: <strong id="countWifi5">0</strong></span>
+        <span class="band-w6">6 GHz: <strong id="countWifi6">0</strong></span>
+        <span>Targeting flags: <strong id="countFlags">0</strong></span>
+      </div>
+      <div class="controls">
+        <button id="btnStartScan" type="button" class="primary">▶ Start Scan</button>
+        <button id="btnPauseScan" type="button" disabled>⏸ Pause</button>
+        <button id="btnStopScan" type="button" disabled>⏹ Stop</button>
+      </div>
+      <p id="scanHint" class="hint">Start is disabled until Demo Mode is on — this web version has no other source of scan data.</p>
+    </div>
+
+    <div class="card">
+      <h2>Radar — proximity (estimate)</h2>
+      <canvas id="radarCanvas" width="320" height="320"></canvas>
+      <p class="hint">Blips are placed by estimated distance from your device (center). Colors: <span class="band-ble">■ 2.4 GHz BLE</span> <span class="band-w5">■ 5 GHz Wi-Fi</span> <span class="band-w6">■ 6 GHz Wi-Fi</span>. Distances are estimates — see Settings.</p>
+      <label>Show band:
+        <select id="bandFilter">
+          <option value="all">All bands</option>
+          <option value="ble">2.4 GHz BLE only</option>
+          <option value="wifi5">5 GHz Wi-Fi only</option>
+          <option value="wifi6">6 GHz Wi-Fi only</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="card">
+      <h2>Bands &amp; Channels</h2>
+      <div class="band-block">
+        <label><input type="checkbox" id="toggleBle" checked> <strong class="band-ble">2.4 GHz — Bluetooth LE</strong></label>
+        <div id="channelsBle" class="channels"></div>
+      </div>
+      <div class="band-block">
+        <label><input type="checkbox" id="toggleWifi5" checked> <strong class="band-w5">5 GHz — Wi-Fi</strong></label>
+        <div id="channelsWifi5" class="channels"></div>
+      </div>
+      <div class="band-block">
+        <label><input type="checkbox" id="toggleWifi6" checked> <strong class="band-w6">6 GHz — Wi-Fi 6E</strong></label>
+        <div id="channelsWifi6" class="channels"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Results — closest first</h2>
+      <ul id="resultsList" class="device-list"></ul>
+      <p id="resultsEmpty" class="empty">No devices yet. Turn on Demo Mode and start a scan.</p>
+    </div>
+
+    <div id="deviceDetail" class="card detail hidden">
+      <div class="detail-head">
+        <h2>Device detail</h2>
+        <button id="btnCloseDetail" type="button">✕ Close</button>
+      </div>
+      <div id="detailContent"></div>
+      <button id="btnTrackDetail" type="button" class="primary">📌 Track this device</button>
+    </div>
+
+    <div class="card">
+      <h2>Live Updates</h2>
+      <ul id="liveFeed" class="feed"></ul>
+      <p id="feedEmpty" class="empty">No updates yet. Scan events will appear here as they happen.</p>
+    </div>
+  </section>
+
+  <!-- ============ TARGETING ============ -->
+  <section id="tab-targeting" class="tab-panel">
+    <div class="card">
+      <h2>Targeting Scan</h2>
+      <p><strong>These are patterns to be aware of, NOT proof of an attack.</strong> This view flags radio behavior that <em>can</em> be aimed at mobile devices — for example a network copying a trusted name from a different address, or a transmitter that seems to follow you. Most flags have innocent explanations.</p>
+      <div class="controls">
+        <button id="btnStartTargeting" type="button" class="primary">▶ Start Targeting Scan</button>
+        <button id="btnStopTargeting" type="button" disabled>⏹ Stop</button>
+        <span>Status: <strong id="targetingStatus">Idle</strong></span>
+      </div>
+      <p class="hint">In this web version, targeting flags only appear in Demo Mode, with fictional sample data.</p>
+    </div>
+    <div class="card">
+      <h2>Flagged patterns</h2>
+      <ul id="targetingList" class="device-list"></ul>
+      <p id="targetingEmpty" class="empty">No targeting patterns flagged. Start a targeting scan (Demo Mode) to see how flags look.</p>
+    </div>
+  </section>
+
+  <!-- ============ TRACKING ============ -->
+  <section id="tab-tracking" class="tab-panel">
+    <div class="card">
+      <h2>Alert settings</h2>
+      <label>Proximity alert — when a tracked device comes within
+        <input type="number" id="alertFeet" min="1" max="300" value="10"> feet (estimate)
+      </label>
+      <label>Lost-device alert — when a tracked device is unseen for
+        <input type="number" id="lostMinutes" min="1" max="120" value="5"> minutes
+      </label>
+      <div><button id="btnSaveAlerts" type="button" class="primary">Save alert settings</button></div>
+      <p id="alertsSaved" class="hint hidden">Saved.</p>
+    </div>
+    <div class="card">
+      <h2>Tracked devices</h2>
+      <ul id="trackedList" class="device-list"></ul>
+      <p id="trackedEmpty" class="empty">Nothing tracked yet. Open a device from the Scanner or a flag from Targeting and choose Track. Targeting sources are marked with ⚠.</p>
+    </div>
+  </section>
+
+  <!-- ============ HISTORY ============ -->
+  <section id="tab-history" class="tab-panel">
+    <div class="card">
+      <h2>Past scans</h2>
+      <ul id="historyList" class="device-list"></ul>
+      <p id="historyEmpty" class="empty">No past scans yet. Finished scans are saved here with their devices and live-update timeline.</p>
+      <button id="btnClearHistory" type="button">Clear history</button>
+    </div>
+  </section>
+
+  <!-- ============ SETTINGS ============ -->
+  <section id="tab-settings" class="tab-panel">
+    <div class="card">
+      <h2>Demo Mode</h2>
+      <label><input type="checkbox" id="demoToggle"> <strong>Demo Mode</strong> — simulate scans with fictional sample devices and networks</label>
+      <p class="hint">Every demo entry is labeled “Demo”, uses fictional names and clearly fictional addresses, and is not a real device. Turning Demo Mode off clears all demo results, flags and demo scan history.</p>
+    </div>
+
+    <div class="card">
+      <h2>Distance estimate</h2>
+      <label>Environment:
+        <select id="envSetting">
+          <option value="indoor">Indoor (default)</option>
+          <option value="outdoor">Outdoor / open</option>
+          <option value="crowded">Crowded / lots of interference</option>
+        </select>
+      </label>
+      <p class="hint">Distance is <strong>always an estimate</strong>, calculated from signal strength (RSSI) with a path-loss formula. Walls, bodies, pockets and interference can shift it a lot. The environment setting adjusts the path-loss exponent: outdoor 2.0, indoor 2.7, crowded 3.3.</p>
+    </div>
+
+    <div class="card">
+      <h2>Updates</h2>
+      <label><input type="checkbox" id="chatUpdatesToggle" checked> <strong>Send updates to Muse chat</strong></label>
+      <p class="hint">Honest label: in this web version, scan updates appear in the app's Live Updates feed only — a web page cannot message your Muse chat by itself. Chat delivery of live scan updates is a feature of the native Android build, where the app can report scan events back.</p>
+    </div>
+
+    <div class="card">
+      <h2>Live scan — what this web version cannot do</h2>
+      <p>A web page cannot power your phone's Bluetooth or Wi-Fi radios for scanning. <strong>Real scanning on all bands — BLE plus 5 GHz and 6 GHz Wi-Fi — requires a native Android build</strong> with Bluetooth Scan, location, and Wi-Fi scanning permissions. That native build is the Google Play / APK path. This web version does not and cannot scan real surrounding devices; its only scan data is the fictional Demo Mode.</p>
+      <p>Even on a native build, a phone can only see <em>patterns</em> — it cannot prove a device is an IMSI catcher or similar. Targeting flags are awareness aids, not proof.</p>
+    </div>
+
+    <div class="card">
+      <h2>Your data</h2>
+      <p>Everything stays in this browser's local storage on this device. Nothing is sent anywhere, and there is no tracking or analytics. See PRIVACY.md in the repository for the full policy.</p>
+      <button id="btnClearAll" type="button">Delete all app data</button>
+      <p id="clearAllDone" class="hint hidden">All app data deleted.</p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <p>Ghost BLE Tracking — distances are estimates. Demo data is fictional.</p>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
